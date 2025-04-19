@@ -61,6 +61,19 @@ ProcessorRegistry::ProcessorRegistry() {
       ProcessorID::RV64_SS, "Single-cycle processor",
       "A single cycle processor", layouts, defRegVals));
 
+  // RISC-V single cycle w Traps
+  layouts = {{"Standard",
+              ":/layouts/RISC-V/rvss_trap/rv_ss_trap_standard_layout.json",
+              {{{0, 0}, QPointF{0.5, 0}}}},
+             {"Extended",
+              ":/layouts/RISC-V/rvss_trap/rv_ss_trap_extended_layout.json",
+              {{{0, 0}, QPointF{0.5, 0}}}}};
+  defRegVals = {{RVISA::GPR, {{2, 0x7ffffff0}, {3, 0x10000000}}}};
+  addProcessor(ProcInfo<vsrtl::core::RVSS<uint32_t>>(
+      ProcessorID::RV32_SS_TRAP, "Single-cycle processor traps",
+      "A single cycle processor that supports traps", layouts, defRegVals));
+
+
   // RISC-V 5-stage without forwarding or hazard detection
   layouts = {
       {"Standard",
