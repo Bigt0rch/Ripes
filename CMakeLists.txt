@@ -90,9 +90,24 @@ endif()
 
 # Platform specific pre-target setup(s)
 if(${APPLE})
-    set(SYSTEM_FLAGS MACOSX_BUNDLE)
+    set(SYSTEM_FLAGS MACOSX_BUNDLE
+            src/processors/RISC-V/rvss_trap/rv_special_csrs.h
+            src/processors/RISC-V/rvss_trap/rv_rti_adder.h
+            src/processors/RISC-V/rvss_trap/rv_rti_mux.h
+            src/processors/RISC-V/rvss_trap/rv_trap_decoder.h
+            src/processors/RISC-V/rvss_trap/rv_ss_trap_mems.h
+            src/processors/RISC-V/rvss_trap/trap_checker.h
+            src/processors/RISC-V/rvss_trap/rv_ss_trap_control.h
+            src/processors/RISC-V/rvss_trap/rv_trap_decode.h
+            src/io/ioplic.cpp
+            src/io/ioplic.h
+            src/io/iokeyboard.h
+            src/io/iokeyboard.cpp
+            src/processors/RISC-V/rvss_trap/rv_direction_mux.h
+            src/io/iotextout.h
+            src/io/iotextout.cpp
+    )
 elseif(${WIN32})
-    set(SYSTEM_FLAGS WIN32)
 endif()
 
 add_subdirectory(external)
