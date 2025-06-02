@@ -36,24 +36,23 @@ public:
     wr_width->out >> mem->wr_width;
 
     data_out << [=] {
-      const auto &value = mem->data_out.uValue();
       switch (op.eValue<MemOp>()) {
       case MemOp::LB:
-        return VT_U(signextend<8>(value & 0xFFUL));
+        return VT_U(signextend<8>(mem->data_out.uValue() & 0xFFUL));
       case MemOp::LBU:
-        return value & 0xFFUL;
+        return mem->data_out.uValue() & 0xFFUL;
       case MemOp::LH:
-        return VT_U(signextend<16>(value & 0xFFFFUL));
+        return VT_U(signextend<16>(mem->data_out.uValue() & 0xFFFFUL));
       case MemOp::LHU:
-        return value & 0xFFFFUL;
+        return mem->data_out.uValue() & 0xFFFFUL;
       case MemOp::LWU:
-        return value & 0xFFFFFFFFUL;
+        return mem->data_out.uValue() & 0xFFFFFFFFUL;
       case MemOp::LW:
-        return VT_U(signextend<32>(value));
+        return VT_U(signextend<32>(mem->data_out.uValue()));
       case MemOp::LD:
-        return value;
+        return mem->data_out.uValue();
       default:
-        return value;
+        return static_cast<VSRTL_VT_U>(0xDEADBEEF);
       }
     };
   }
