@@ -8,6 +8,7 @@
 
 #include "../isa/isa_types.h"
 #include "../isa/isainfo.h"
+#include "processors/RISC-V/rvss_trap/trap_checker.h"
 
 namespace Ripes {
 
@@ -224,6 +225,9 @@ public:
    * processor
    */
   virtual vsrtl::core::AddressSpaceMM &getMemory() = 0;
+
+
+  virtual vsrtl::core::TrapChecker* getTrapChecker() { return nullptr; }
 
   /**
    * @brief dataMemAccess/instrMemAccess

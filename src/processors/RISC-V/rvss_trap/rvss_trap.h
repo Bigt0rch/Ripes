@@ -5,6 +5,14 @@
 #include "VSRTL/core/vsrtl_design.h"
 #include "VSRTL/core/vsrtl_logicgate.h"
 #include "VSRTL/core/vsrtl_multiplexer.h"
+#include "rv_rti_adder.h"
+#include "rv_rti_mux.h"
+#include "rv_special_csrs.h"
+#include "rv_ss_trap_mems.h"
+#include "rv_trap_decoder.h"
+#include "trap_checker.h"
+#include "rv_ss_trap_control.h"
+#include "rv_direction_mux.h"
 
 #include "../../ripesvsrtlprocessor.h"
 
@@ -31,15 +39,72 @@ class RVSS_TRAP : public RipesVSRTLProcessor {
 
 public:
   RVSS_TRAP(const QStringList &extensions)
-      : RipesVSRTLProcessor("Single Cycle RISC-V Processor") {
+      : RipesVSRTLProcessor("Single Cycle RISC-V Processor with traps") {
     m_enabledISA = ISAInfoRegistry::getISA<XLenToRVISA<XLEN>()>(extensions);
     decode->setISA(m_enabledISA);
+
+    // -----------------------------------------------------------------------
+    // Interrupts
+    trap_checker->ei >> *ei_and->in[0];
+    trap_checker->si >> *si_and->in[0];
+    trap_checker->ti >> *ti_and->in[0];
+    trap_checker->ei >> mip_reg->eip_in;
+    trap_checker->si >> mip_reg->sip_in;
+    trap_checker->ti >> mip_reg->tip_in;
+    trap_checker->ei >> trap_decoder->ei;
+    trap_checker->si >> trap_decoder->si;
+    trap_checker->ti >> trap_decoder->ti;
+    0 >> trap_checker->dummy;
+
+    // -----------------------------------------------------------------------
+    // Interrupt enabled checker
+    mie_reg->eie_out >> *ei_and->in[1];
+    mie_reg->sie_out >> *si_and->in[1];
+    mie_reg->tie_out >> *ti_and->in[1];
+
+    ei_and->out >> *ie_or_1->in[0];
+    si_and->out >> *ie_or_1->in[1];
+    ie_or_1->out >> *ie_or_2->in[0];
+    ti_and->out >> *ie_or_2->in[1];
+
+    ie_or_2->out >> *ie_and->in[0];
+    mstatus_reg->ie_out >> *ie_and->in[1];
+    ie_and->out >> *trap_or->in[0];
+    exception_or->out >> *trap_or->in[1];
+    ie_and->out >> *rti_and->in[1];
+    mtvec_reg->mode_out >> *rti_and->in[0];
+
+    trap_decoder->out >> *mcause_src->ins[1];
+    trap_or->out >> *mcause_enable_or->in[1];
+    trap_or->out >> mcause_src->select;
+
+    trap_or->out >> *mepc_enable_or->in[1];
+    trap_or->out >> mepc_src->select;
+
+
+    trap_or->out >> csr_op_ctrl->select;
+    control->csr_op >> *csr_op_ctrl->ins[0];
+    0 >> *csr_op_ctrl->ins[1];
+    csr_op_ctrl->out >> mstatus_reg->c_s;
+    csr_op_ctrl->out >> mtvec_reg->c_s;
+    csr_op_ctrl->out >> mie_reg->c_s;
+    csr_op_ctrl->out >> mepc_reg->c_s;
+    csr_op_ctrl->out >> mip_reg->c_s;
+    csr_op_ctrl->out >> mcause_reg->c_s;
+    csr_op_ctrl->out >> mtval_reg->c_s;
+
 
     // -----------------------------------------------------------------------
     // Program counter
     pc_reg->out >> pc_4->op1;
     pc_inc->out >> pc_4->op2;
-    pc_src->out >> pc_reg->in;
+    pc_src->out >> *pc_src_2->ins[0];
+    mepc_reg->out >> *pc_src_2->ins[1];
+    control->isMret >> pc_src_2->select;
+    pc_src_2->out >> *pc_src_3->ins[0];
+    rti_mux->out >> *pc_src_3->ins[1];
+    trap_or->out >> pc_src_3->select;
+    pc_src_3->out >> pc_reg->in;
 
     2 >> pc_inc->get(PcInc::INC2);
     4 >> pc_inc->get(PcInc::INC4);
@@ -54,10 +119,17 @@ public:
     // Instruction memory
     pc_reg->out >> instr_mem->addr;
     instr_mem->setMemory(m_memory);
+    instr_mem->pc_add_misaligned >> *exception_or->in[0];
+    instr_mem->inst_acc_fault >> *exception_or->in[1];
+    instr_mem->data_out >> decode->instr;
+    instr_mem->pc_add_misaligned >> trap_decoder->pc_add_misaligned;
+    instr_mem->inst_acc_fault >> trap_decoder->inst_acc_fault;
 
     // -----------------------------------------------------------------------
     // Decode
-    instr_mem->data_out >> decode->instr;
+    decode->illegal_inst >> *exception_or->in[2];
+    decode->illegal_inst >> trap_decoder->illegal_inst;
+    decode->csr_idx >> control->csr_idx;
 
     // -----------------------------------------------------------------------
     // Control signals
@@ -73,15 +145,69 @@ public:
     decode->wr_reg_idx >> registerFile->wr_addr;
     decode->r1_reg_idx >> registerFile->r1_addr;
     decode->r2_reg_idx >> registerFile->r2_addr;
-    control->reg_do_write_ctrl >> registerFile->wr_en;
+    exception_or->out >> reg_wr_ctrl->select;
+    control->reg_do_write_ctrl >> *reg_wr_ctrl->ins[0];
+    0 >> *reg_wr_ctrl->ins[1];
+    reg_wr_ctrl->out >> registerFile->wr_en;
     reg_wr_src->out >> registerFile->data_in;
 
-    data_mem->data_out >> reg_wr_src->get(RegWrSrc::MEMREAD);
-    alu->res >> reg_wr_src->get(RegWrSrc::ALURES);
-    pc_4->out >> reg_wr_src->get(RegWrSrc::PC4);
+    data_mem->data_out >> reg_wr_src->get(RegWrTrapSrc::MEMREAD);
+    alu->res >> reg_wr_src->get(RegWrTrapSrc::ALURES);
+    pc_4->out >> reg_wr_src->get(RegWrTrapSrc::PC4);
     control->reg_wr_src_ctrl >> reg_wr_src->select;
 
     registerFile->setMemory(m_regMem);
+
+    // -----------------------------------------------------------------------
+    // CSRs
+    control->csr_mcause_en >> *mcause_enable_or->in[0];
+    control->csr_mtvec_en >> mtvec_reg->enable;
+    control->csr_mie_en >> mie_reg->enable;
+    control->csr_mip_en >> mip_reg->enable;
+    control->csr_mstatus_en >> mstatus_reg->enable;
+    control->csr_mtval_en >> mtval_reg->enable;
+    control->csr_mepc_en >> *mepc_enable_or->in[0];
+    mepc_enable_or->out >> mepc_reg->enable;
+    mcause_enable_or->out >> mcause_reg->enable;
+
+    mstatus_reg->out >> *csr_data_src->ins[0];
+    mtvec_reg->out >> *csr_data_src->ins[1];
+    mie_reg->out >> *csr_data_src->ins[2];
+    mepc_reg->out >> *csr_data_src->ins[3];
+    mip_reg->out >> *csr_data_src->ins[4];
+    mcause_reg->out >> *csr_data_src->ins[5];
+    mtval_reg->out >> *csr_data_src->ins[6];
+    csr_data_src->out >> reg_wr_src->get(RegWrTrapSrc::CSR);
+    decode->csr_idx >> csr_data_src->select;
+
+    0 >> mstatus_reg->clear;
+    0 >> mtvec_reg->clear;
+    0 >> mie_reg->clear;
+    0 >> mepc_reg->clear;
+    0 >> mip_reg->clear;
+    0 >> mcause_reg->clear;
+    0 >> mtval_reg->clear;
+
+    control->csr_wr_select >> csr_wr_src->select;
+    immediate->imm >> *csr_wr_src->ins[0]; 
+    registerFile->r1_out >> *csr_wr_src->ins[1]; 
+    csr_wr_src->out >> mstatus_reg->in;  
+    csr_wr_src->out >> mtvec_reg->in;  
+    csr_wr_src->out >> mie_reg->in;  
+    mepc_src->out >> mepc_reg->in;
+    csr_wr_src->out >> mip_reg->in;  
+    mcause_src->out >> mcause_reg->in;
+    csr_wr_src->out >> mtval_reg->in;  
+    csr_wr_src->out >> *mepc_src->ins[0];  
+    pc_reg->out >> *mepc_src->ins[1];
+    csr_wr_src->out >> *mcause_src->ins[0];  
+
+    trap_decoder->out >> mtval_reg->cause; 
+    pc_reg->out >> mtval_reg->pc; 
+    alu->res >> mtval_reg->mem_addr; 
+
+    control->isMret >> mstatus_reg->isMret; 
+    trap_or->out >> mstatus_reg->trap; 
 
     // -----------------------------------------------------------------------
     // Branch
@@ -113,11 +239,39 @@ public:
 
     // -----------------------------------------------------------------------
     // Data memory
-    alu->res >> data_mem->addr;
-    control->mem_do_write_ctrl >> data_mem->wr_en;
+    alu->res >> mem_dir_mux->alu_res;
+    exception_or->out >> mem_wr_ctrl->select;
+    control->mem_do_write_ctrl >> *mem_wr_ctrl->ins[0];
+    0 >> *mem_wr_ctrl->ins[1];
+    mem_wr_ctrl->out >> data_mem->wr_en;
     registerFile->r2_out >> data_mem->data_in;
     control->mem_ctrl >> data_mem->op;
+
     data_mem->mem->setMemory(m_memory);
+
+    mem_hzrd_detector->setMemory(m_memory);
+    alu->res >> mem_hzrd_detector->addr;
+    control->mem_ctrl >> mem_hzrd_detector->op;
+    mem_hzrd_detector->load_add_misaligned >> *exception_or->in[3];
+    mem_hzrd_detector->store_add_misaligned >> *exception_or->in[4];
+    mem_hzrd_detector->load_acc_fault >> *exception_or->in[5];
+    mem_hzrd_detector->store_acc_fault >> *exception_or->in[6];
+    mem_hzrd_detector->load_add_misaligned >> trap_decoder->load_add_misaligned;
+    mem_hzrd_detector->store_add_misaligned >> trap_decoder->store_add_misaligned;
+    mem_hzrd_detector->load_acc_fault >> trap_decoder->load_acc_fault;
+    mem_hzrd_detector->store_acc_fault >> trap_decoder->store_acc_fault;
+
+    control->mem_ctrl >> mem_dir_mux->select;
+    0 >> mem_dir_mux->zero;
+    mem_dir_mux->out >> data_mem->addr;
+
+    // -----------------------------------------------------------------------
+    // RTI Address calc
+    mtvec_reg->out >> rti_adder->op1;
+    mcause_reg->out >> rti_adder->op2;
+    rti_adder->out >> rti_mux->op1;
+    mtvec_reg->out >> rti_mux->op2;
+    rti_and->out >> rti_mux->select;
 
     // -----------------------------------------------------------------------
     // Ecall checker
@@ -129,29 +283,68 @@ public:
   // Design subcomponents
   SUBCOMPONENT(registerFile, TYPE(RegisterFile<XLEN, false>));
   SUBCOMPONENT(alu, TYPE(ALU<XLEN>));
-  SUBCOMPONENT(control, Control);
+  SUBCOMPONENT(control, TrapControl);
   SUBCOMPONENT(immediate, TYPE(Immediate<XLEN>));
-  SUBCOMPONENT(decode, TYPE(DecodeRVC<XLEN>));
+  SUBCOMPONENT(decode, TYPE(DecodeRVC_Trap<XLEN>));
   SUBCOMPONENT(branch, TYPE(Branch<XLEN>));
   SUBCOMPONENT(pc_4, Adder<XLEN>);
+  SUBCOMPONENT(rti_adder, RTIAdder<XLEN>);
 
   // Registers
   SUBCOMPONENT(pc_reg, Register<XLEN>);
 
   // Multiplexers
-  SUBCOMPONENT(reg_wr_src, TYPE(EnumMultiplexer<RegWrSrc, XLEN>));
+  SUBCOMPONENT(csr_wr_src, TYPE(EnumMultiplexer<CSRWrSrc, XLEN>));
+  SUBCOMPONENT(reg_wr_src, TYPE(EnumMultiplexer<RegWrTrapSrc, XLEN>));
   SUBCOMPONENT(pc_src, TYPE(EnumMultiplexer<PcSrc, XLEN>));
+  SUBCOMPONENT(pc_src_2, TYPE(EnumMultiplexer<PcSrc2, XLEN>));
+  SUBCOMPONENT(pc_src_3, TYPE(EnumMultiplexer<PcSrc3, XLEN>));
   SUBCOMPONENT(alu_op1_src, TYPE(EnumMultiplexer<AluSrc1, XLEN>));
   SUBCOMPONENT(alu_op2_src, TYPE(EnumMultiplexer<AluSrc2, XLEN>));
+  SUBCOMPONENT(mepc_src, TYPE(EnumMultiplexer<MepcSrc, XLEN>));
+  SUBCOMPONENT(mcause_src, TYPE(EnumMultiplexer<McauseSrc, XLEN>));
+  SUBCOMPONENT(csr_data_src, TYPE(EnumMultiplexer<CSR, XLEN>));
+  SUBCOMPONENT(rti_mux, TYPE(RTIMux<XLEN>));
   SUBCOMPONENT(pc_inc, TYPE(EnumMultiplexer<PcInc, XLEN>));
+  SUBCOMPONENT(csr_op_ctrl, TYPE(Multiplexer<2,2>));
+  SUBCOMPONENT(mem_wr_ctrl, TYPE(Multiplexer<2,1>));
+  SUBCOMPONENT(reg_wr_ctrl, TYPE(Multiplexer<2,1>));
 
   // Memories
-  SUBCOMPONENT(instr_mem, TYPE(ROM<XLEN, c_RVInstrWidth>));
+  SUBCOMPONENT(instr_mem, TYPE(InstrMemExcp<XLEN, c_RVInstrWidth>));
   SUBCOMPONENT(data_mem, TYPE(RVMemory<XLEN, XLEN>));
+  SUBCOMPONENT(mem_hzrd_detector, TYPE(MemHzrdDetectionUnit<XLEN, XLEN>));
+  SUBCOMPONENT(mem_dir_mux, TYPE(MemDirMux<XLEN>));
 
   // Gates
   SUBCOMPONENT(br_and, TYPE(And<1, 2>));
+  SUBCOMPONENT(rti_and, TYPE(Or<1, 2>));
+  SUBCOMPONENT(ei_and, TYPE(And<1, 2>));
+  SUBCOMPONENT(si_and, TYPE(And<1, 2>));
+  SUBCOMPONENT(ti_and, TYPE(And<1, 2>));
+  SUBCOMPONENT(ie_and, TYPE(And<1, 2>));
+  SUBCOMPONENT(ie_or_1, TYPE(Or<1, 2>));
+  SUBCOMPONENT(ie_or_2, TYPE(Or<1, 2>));
   SUBCOMPONENT(controlflow_or, TYPE(Or<1, 2>));
+  SUBCOMPONENT(trap_or, TYPE(Or<1, 2>));
+  SUBCOMPONENT(mepc_enable_or, TYPE(Or<1, 2>));
+  SUBCOMPONENT(mcause_enable_or, TYPE(Or<1, 2>));
+  SUBCOMPONENT(exception_or, TYPE(Or<1, 7>));
+
+  // CSRs
+  SUBCOMPONENT(mstatus_reg, RegisterMSTATUS<XLEN>);
+  SUBCOMPONENT(mtvec_reg, RegisterMTVEC<XLEN>);
+  SUBCOMPONENT(mie_reg, RegisterMIE<XLEN>);
+  SUBCOMPONENT(mepc_reg, RegisterClEnCS<XLEN>);
+  SUBCOMPONENT(mip_reg, RegisterMIP<XLEN>);
+  SUBCOMPONENT(mcause_reg, RegisterClEnCS<XLEN>);
+  SUBCOMPONENT(mtval_reg, RegisterMTVAL<XLEN>);
+
+  // Decoder traps
+  SUBCOMPONENT(trap_decoder, TYPE(TrapDecoder<XLEN>));
+
+  //Trap checker
+  SUBCOMPONENT(trap_checker, TYPE(TrapChecker));
 
   // Address spaces
   ADDRESSSPACEMM(m_memory);
@@ -238,8 +431,8 @@ public:
   }
 
   static ProcessorISAInfo supportsISA() { return RVISA::supportsISA<XLEN>(); }
-  const ISAInfoBase *implementsISA() const override {
-    return m_enabledISA.get();
+  std::shared_ptr<ISAInfoBase> implementsISA() const override {
+    return m_enabledISA;
   }
   std::shared_ptr<const ISAInfoBase> fullISA() const override {
     return RVISA::fullISA<XLEN>();
@@ -254,6 +447,9 @@ public:
     }
     return rfs;
   }
+
+  vsrtl::core::TrapChecker* getTrapChecker() override { return trap_checker; }
+
 
 private:
   bool m_finishInNextCycle = false;

@@ -1,0 +1,268 @@
+#pragma once
+
+#include <bitset>
+#include "VSRTL/core/vsrtl_component.h"
+#include "../riscv.h"
+
+namespace vsrtl {
+namespace core {
+using namespace Ripes;
+
+template <unsigned XLEN>
+class TrapDecode : public Component {
+public:
+  void setISA(const std::shared_ptr<ISAInfoBase> &isa) { m_isa = isa; }
+
+  TrapDecode(const std::string &name, SimComponent *parent)
+      : Component(name, parent) {
+    opcode << [=] {
+      const auto instrValue = instr.uValue();
+
+      const unsigned l7 = instrValue & 0b1111111;
+
+      // clang-format off
+            switch(l7) {
+            case RVISA::OpcodeID::LUI: return RVInstr::LUI;
+            case RVISA::OpcodeID::AUIPC: return RVInstr::AUIPC;
+            case RVISA::OpcodeID::JAL: return RVInstr::JAL;
+            case RVISA::OpcodeID::JALR: return RVInstr::JALR;
+            case RVISA::OpcodeID::SYSTEM: {
+              const auto fields = RVInstrParser::getParser()->decodeI32Instr(instrValue);
+              switch (fields[2]) {
+                case 0b001: return RVInstr::CSRRW;
+                case 0b010: return RVInstr::CSRRWI;
+                case 0b011: return RVInstr::CSRRC;
+                case 0b100: return RVInstr::CSRRCI;
+                case 0b101: return RVInstr::CSRRS;
+                case 0b110: return RVInstr::CSRRSI;
+                default:
+                if (fields[0] == 0b00) {
+                  return RVInstr::ECALL;
+                }
+                else {
+                  return RVInstr::MRET;
+                }
+              }
+              break;
+            }
+
+            case RVISA::OpcodeID::OPIMM: {
+                // I-Type
+                const auto fields = RVInstrParser::getParser()->decodeI32Instr(instrValue);
+                switch(fields[2]) {
+                case 0b000: return RVInstr::ADDI;
+                case 0b010: return RVInstr::SLTI;
+                case 0b011: return RVInstr::SLTIU;
+                case 0b100: return RVInstr::XORI;
+                case 0b110: return RVInstr::ORI;
+                case 0b111: return RVInstr::ANDI;
+                case 0b001: return RVInstr::SLLI;
+                case 0b101: {
+                    switch (instrValue >> 26) {
+                    case 0b000000: return RVInstr::SRLI;
+                    case 0b010000: return RVInstr::SRAI;
+                    }
+                }
+                default: break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::OPIMM32: {
+                // I-Type (32-bit, in 64-bit ISA)
+                const auto fields = RVInstrParser::getParser()->decodeI32Instr(instrValue);
+                switch(fields[2]) {
+                case 0b000: return RVInstr::ADDIW;
+                case 0b001: return RVInstr::SLLIW;
+                case 0b101: {
+                    switch (instrValue >> 26) {
+                    case 0b000000: return RVInstr::SRLIW;
+                    case 0b010000: return RVInstr::SRAIW;
+                    }
+                }
+                default: break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::OP: {
+                // R-Type
+                const auto fields = RVInstrParser::getParser()->decodeR32Instr(instrValue);
+                if (fields[0] == 0b0000001) {
+                    if(m_isa && m_isa->extensionEnabled("M")) {
+                        // RV32M Standard extension
+                        switch (fields[3]) {
+                            case 0b000: return RVInstr::MUL;
+                            case 0b001: return RVInstr::MULH;
+                            case 0b010: return RVInstr::MULHSU;
+                            case 0b011: return RVInstr::MULHU;
+                            case 0b100: return RVInstr::DIV;
+                            case 0b101: return RVInstr::DIVU;
+                            case 0b110: return RVInstr::REM;
+                            case 0b111: return RVInstr::REMU;
+                            default: break;
+                        }
+                    }
+                } else {
+                    switch (fields[3]) {
+                        case 0b000: {
+                            switch (fields[0]) {
+                                case 0b0000000: return RVInstr::ADD;
+                                case 0b0100000: return RVInstr::SUB;
+                                default: return RVInstr::NOP;
+                            }
+                        }
+                        case 0b001: return RVInstr::SLL;
+                        case 0b010: return RVInstr::SLT;
+                        case 0b011: return RVInstr::SLTU;
+                        case 0b100: return RVInstr::XOR;
+                        case 0b101: {
+                            switch (fields[0]) {
+                                case 0b0000000: return RVInstr::SRL;
+                                case 0b0100000: return RVInstr::SRA;
+                                default: return RVInstr::NOP;
+                            }
+                        }
+                        case 0b110: return RVInstr::OR;
+                        case 0b111: return RVInstr::AND;
+                        default: break;
+                    }
+                    break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::OP32: {
+                // R-Type (32-bit, in 64-bit ISA)
+                const auto fields = RVInstrParser::getParser()->decodeR32Instr(instrValue);
+                if (fields[0] == 0b0000001) {
+                    if(m_isa && m_isa->extensionEnabled("M")) {
+                        // RV64M Standard extension
+                        switch (fields[3]) {
+                            case 0b000: return RVInstr::MULW;
+                            case 0b100: return RVInstr::DIVW;
+                            case 0b101: return RVInstr::DIVUW;
+                            case 0b110: return RVInstr::REMW;
+                            case 0b111: return RVInstr::REMUW;
+                            default: break;
+                        }
+                    }
+                } else {
+                    switch (fields[3]) {
+                        case 0b000: {
+                            switch (fields[0]) {
+                                case 0b0000000: return RVInstr::ADDW;
+                                case 0b0100000: return RVInstr::SUBW;
+                                default: return RVInstr::NOP;
+                            }
+                        }
+                        case 0b001: return RVInstr::SLLW;
+                        case 0b101: {
+                            switch (fields[0]) {
+                                case 0b0000000: return RVInstr::SRLW;
+                                case 0b0100000: return RVInstr::SRAW;
+                                default: return RVInstr::NOP;
+                            }
+                        }
+                        default: break;
+                    }
+                    break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::LOAD: {
+                // Load instruction
+                const auto fields = RVInstrParser::getParser()->decodeI32Instr(instrValue);
+                switch (fields[2]) {
+                    case 0b000: return RVInstr::LB;
+                    case 0b001: return RVInstr::LH;
+                    case 0b010: return RVInstr::LW;
+                    case 0b100: return RVInstr::LBU;
+                    case 0b101: return RVInstr::LHU;
+                    case 0b110: return RVInstr::LWU;
+                    case 0b011: return RVInstr::LD;
+                    default: break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::STORE: {
+                // Store instructions
+                const auto fields = RVInstrParser::getParser()->decodeS32Instr(instrValue);
+                switch (fields[3]) {
+                    case 0b000: return RVInstr::SB;
+                    case 0b001: return RVInstr::SH;
+                    case 0b010: return RVInstr::SW;
+                    case 0b011: return RVInstr::SD;
+                    default: break;
+                }
+                break;
+            }
+
+            case RVISA::OpcodeID::BRANCH: {
+                // Branch instruction
+                const auto fields = RVInstrParser::getParser()->decodeB32Instr(instrValue);
+                switch (fields[4]) {
+                    case 0b000: return RVInstr::BEQ;
+                    case 0b001: return RVInstr::BNE;
+                    case 0b100: return RVInstr::BLT;
+                    case 0b101: return RVInstr::BGE;
+                    case 0b110: return RVInstr::BLTU;
+                    case 0b111: return RVInstr::BGEU;
+                    default: break;
+                }
+                break;
+            }
+
+
+            default:
+                break;
+            }
+
+            // Fallthrough - unknown instruction.
+            return RVInstr::NOP;
+        };
+
+        wr_reg_idx << [=] {
+          return (instr.uValue() >> 7) & 0b11111;
+        };
+
+        r1_reg_idx << [=] {
+          return (instr.uValue() >> 15) & 0b11111;
+        };
+
+        r2_reg_idx << [=] {
+          return (instr.uValue() >> 20) & 0b11111;
+        };
+
+        csr_idx << [=] {
+          switch ((instr.uValue() >> 20) & 0b111111111111) {
+            case(0x300): return CSR::MSTATUS;
+            case(0x304): return CSR::MIE;
+            case(0x305): return CSR::MTVEC;
+            case(0x341): return CSR::MEPC;
+            case(0x342): return CSR::MCAUSE;
+            case(0x343): return CSR::MTVAL;
+            case(0x344): return CSR::MIP;
+            default: return CSR::MSTATUS;
+          }
+        };
+
+    // clang-format on
+  }
+
+  INPUTPORT(instr, c_RVInstrWidth);
+  OUTPUTPORT_ENUM(opcode, RVInstr);
+  OUTPUTPORT(wr_reg_idx, c_RVRegsBits);
+  OUTPUTPORT(r1_reg_idx, c_RVRegsBits);
+  OUTPUTPORT(r2_reg_idx, c_RVRegsBits);
+  OUTPUTPORT_ENUM(csr_idx, CSR);
+
+private:
+  void unknownInstruction() {}
+  std::shared_ptr<ISAInfoBase> m_isa;
+};
+
+} // namespace core
+} // namespace vsrtl

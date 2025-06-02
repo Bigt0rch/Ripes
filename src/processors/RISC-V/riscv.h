@@ -104,7 +104,29 @@ enum class RVInstr {
   DIVW,
   DIVUW,
   REMW,
-  REMUW
+  REMUW,
+
+  /* ZiCSR */
+  MRET,
+  CSRRW,
+  CSRRS,
+  CSRRC,
+  CSRRWI,
+  CSRRSI,
+  CSRRCI,
+
+  /* Unknown OP */
+  UNK
+};
+
+enum class CSR {
+  MSTATUS,
+  MTVEC,
+  MIE,
+  MEPC,
+  MIP,
+  MCAUSE,
+  MTVAL
 };
 
 /** Datapath enumerations */
@@ -141,6 +163,9 @@ enum class ALUOp {
   REMW,
   REMUW
 };
+
+enum class CSRWrSrc { IMM, REG };
+enum class RegWrTrapSrc { MEMREAD, ALURES, PC4, CSR };
 enum class RegWrSrc { MEMREAD, ALURES, PC4 };
 enum class AluSrc1 { REG1, PC };
 enum class AluSrc2 { REG2, IMM };
@@ -148,6 +173,10 @@ enum class CompOp { NOP, EQ, NE, LT, LTU, GE, GEU };
 enum class MemOp { NOP, LB, LH, LW, LBU, LHU, SB, SH, SW, LWU, LD, SD };
 enum ECALL { none, print_int = 1, print_char = 2, print_string = 4, exit = 10 };
 enum PcSrc { PC4 = 0, ALU = 1 };
+enum PcSrc2 { PC = 0, EPC = 1 };
+enum PcSrc3 { E_PC = 0, RTI = 1 };
+enum MepcSrc { MEPC_WDATA = 0, MEPC_PC = 1 };
+enum McauseSrc { MCAUSE_WDATA = 0, MCAUSE_CAUSE = 1 };
 enum PcInc { INC2 = 0, INC4 = 1 };
 
 /** Instruction field parser */
