@@ -11,7 +11,7 @@ _start:
     .equ CLAIM_REG,     PLIC_BASE+0x200004
 
     .equ MONITOR_ID,    2
-    .equ MONITOR_ADDR,  0xF0200010
+    .equ MONITOR_ADDR,  0xF020000c
     .equ MONITOR_MASK,  4       # (1<<2)
 
     # ---------------------------------------------------------
