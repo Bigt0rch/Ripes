@@ -13,6 +13,7 @@
 #include "syscall/ripes_syscall.h"
 
 #include "VSRTL/graphics/vsrtl_widget.h"
+#include "processors/RISC-V/rvss_trap/trap_checker.h"
 
 namespace Ripes {
 
@@ -141,6 +142,9 @@ public:
   static vsrtl::core::AddressSpaceMM &getMemory() {
     return get()->_getMemory();
   }
+
+
+  static vsrtl::core::TrapChecker* getTrapChecker();
 
   /**
    * @brief setRegisterValue

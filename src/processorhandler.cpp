@@ -159,6 +159,10 @@ void ProcessorHandler::_writeMem(AInt address, VInt value, int size) {
   m_currentProcessor->getMemory().writeMem(address, value, size);
 }
 
+vsrtl::core::TrapChecker* ProcessorHandler::getTrapChecker() {
+  return get()->_getProcessor()->getTrapChecker();
+}
+
 vsrtl::core::AddressSpaceMM &ProcessorHandler::_getMemory() {
   return m_currentProcessor->getMemory();
 }

@@ -99,6 +99,9 @@ public:
    */
   virtual const std::vector<IOSymbol> *extraSymbols() const { return nullptr; };
 
+
+  virtual bool supportsInterrupts() const { return false; }
+
   /**
    * @brief setParameter
    * Attempt to set the parameter @p ID to @p value. Returns true if the value
@@ -124,6 +127,8 @@ public:
   virtual VInt ioRead(AInt offset, unsigned bytes) = 0;
   virtual void ioWrite(AInt offset, VInt value, unsigned bytes) = 0;
 
+  virtual VInt ioReadConst(AInt offset, unsigned bytes) = 0;
+
   /**
    * Read/write functions from peripheral to bus (memory/other periphs)
    */
@@ -136,6 +141,14 @@ public:
     unclaimPeripheralId(m_type, m_id);
     m_id = claimPeripheralId(m_type, id);
   }
+
+  // Nuevo: ID global para PLIC
+  unsigned globalID() const { return m_globalId; } 
+  void setGlobalID(unsigned gid) { m_globalId = gid; } 
+
+  // Returns true if the peripheral is requesting an interrupt
+  virtual bool interruptPending() const { return false; }
+
 
   /**
    * @brief serializedUniqueID
@@ -211,6 +224,7 @@ protected:
 
   std::map<unsigned, IOParam> m_parameters;
   unsigned m_id = UINT_MAX;
+  unsigned m_globalId = 0; 
 
   static std::map<unsigned, std::set<unsigned>> s_peripheralIDs;
   static unsigned claimPeripheralId(const unsigned &ioType, int forcedID = -1) {

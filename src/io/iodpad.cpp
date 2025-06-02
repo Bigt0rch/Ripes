@@ -113,6 +113,24 @@ VInt IODPad::ioRead(AInt offset, unsigned) {
   return 0;
 }
 
+VInt IODPad::ioReadConst(AInt offset, unsigned) {
+  switch (offset) {
+  case LEFT * 4: {
+    return m_buttons.at(LEFT)->isDown();
+  }
+  case RIGHT * 4: {
+    return m_buttons.at(RIGHT)->isDown();
+  }
+  case UP * 4: {
+    return m_buttons.at(UP)->isDown();
+  }
+  case DOWN * 4: {
+    return m_buttons.at(DOWN)->isDown();
+  }
+  }
+  return 0;
+}
+
 void IODPad::ioWrite(AInt, VInt, unsigned) {
   // Write-only
 }

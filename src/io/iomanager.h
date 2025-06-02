@@ -71,6 +71,10 @@ signals:
 private:
   IOManager();
 
+  // Global ID for assignning a register at PLIC
+  std::set<unsigned> m_usedGlobalIds;
+  unsigned getNextGlobalId();
+
   /**
    * @brief updateSymbols
    * Updates the set of exported memory-mapped symbols for the currently
@@ -104,9 +108,14 @@ private:
    */
   AInt nextPeripheralAddress() const;
 
+  // Internal functions to connect/disconnect peripherals from PLIC
+  void connectPeripheralsToPLIC(); 
+  void disconnectPeripheralsFromPLIC(); 
+
   AInt assignBaseAddress(IOBase *peripheral);
   void assignBaseAddresses();
 
+  IOPLIC* m_plic = nullptr; 
   MemoryMap m_memoryMap;
   std::map<IOBase *, MemoryMapEntry> m_periphMMappings;
   std::set<IOBase *> m_peripherals;

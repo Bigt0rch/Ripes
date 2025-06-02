@@ -110,7 +110,9 @@ void IOTab::updateIOSymbolFilePreview() {
 
 IOBase *IOTab::createPeripheral(IOType type, int forcedID) {
   auto *peripheral = IOManager::get().createPeripheral(type, forcedID);
-
+  if (!peripheral) {
+    return nullptr;
+  }
   // Create tab for peripheral
   auto *peripheralTab = new IOPeripheralTab(this, peripheral);
   m_ui->peripheralsTab->addTab(peripheralTab, peripheral->name());

@@ -202,6 +202,14 @@ VInt IOSwitches::ioRead(AInt, unsigned) {
                          });
 }
 
+VInt IOSwitches::ioReadConst(AInt, unsigned) {
+  return std::accumulate(m_switches.begin(), m_switches.end(), 0,
+                         [=](uint32_t acc, const auto &sw) {
+                           return acc | (sw.second.second->isChecked())
+                                            << sw.first;
+                         });
+}
+
 void IOSwitches::ioWrite(AInt, VInt, unsigned) {
   // Read-only
   return;

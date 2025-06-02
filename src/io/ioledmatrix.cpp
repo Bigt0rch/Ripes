@@ -48,6 +48,11 @@ VInt IOLedMatrix::ioRead(AInt offset, unsigned size) {
          vsrtl::generateBitmask(size * 8);
 }
 
+VInt IOLedMatrix::ioReadConst(AInt offset, unsigned size) {
+  return (m_ledRegs.at(offset / 4) >> (offset % 4)) &
+         vsrtl::generateBitmask(size * 8);
+}
+
 void IOLedMatrix::ioWrite(AInt offset, VInt value, unsigned) {
   offset >>= 2; // word addressable
   if (offset >= m_ledRegs.size()) {

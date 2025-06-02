@@ -85,7 +85,11 @@ void IOManager::registerPeripheralWithProcessor(IOBase *peripheral) {
           },
           [peripheral](AInt offset, unsigned size) {
             return peripheral->ioRead(offset, size);
-          }});
+          },
+        [peripheral](AInt offset, unsigned size) {
+            return peripheral->ioReadConst(offset, size);
+          }
+      });
 
   peripheral->memWrite = [](AInt address, VInt value, unsigned size) {
     ProcessorHandler::getMemory().writeMem(address, value, size);
@@ -104,38 +108,128 @@ void IOManager::unregisterPeripheralWithProcessor(IOBase *peripheral) {
   }
 }
 
-IOBase *IOManager::createPeripheral(IOType type, unsigned forcedId) {
+IOBase* IOManager::createPeripheral(IOType type, unsigned forcedId) {
+  // --- 1) Validación PLIC ---
+  if (type == IOType::PLIC) {
+    auto* tc = ProcessorHandler::getTrapChecker();
+    if (!tc) {
+      QMessageBox::warning(nullptr, "PLIC no soportado",
+          "El procesador actual no soporta interrupciones.");
+      return nullptr;
+    }
+    if (m_plic) {
+      QMessageBox::information(nullptr, "PLIC duplicado",
+          "Ya existe un PLIC instanciado.");
+      return nullptr;
+    }
+  }
+
+  // Create peripheral
   auto *peripheral = IOFactories.at(type)(nullptr);
 
   connect(peripheral, &IOBase::sizeChanged, this,
-          [=] { this->peripheralSizeChanged(peripheral); });
-  connect(peripheral, &IOBase::aboutToDelete, this, [=](std::atomic<bool> &ok) {
-    this->removePeripheral(peripheral, ok);
-  });
+          [=] { peripheralSizeChanged(peripheral); });
+  connect(peripheral, &IOBase::aboutToDelete, this,
+          [=](std::atomic<bool>& ok) { removePeripheral(peripheral, ok); });
 
   if (forcedId != UINT_MAX) {
     peripheral->setID(forcedId);
   }
+
+
+  // Rigister PLIC if it's the pype of peripheral we are creating
+  if (type == IOType::PLIC) {
+    m_plic = static_cast<IOPLIC*>(peripheral);
+    // Connnect all existing peripherals
+    connectPeripheralsToPLIC();
+  }
+
+  // if it supports interrupts & a PLIC already exists, we register it in the PLIC
+  if (type != IOType::PLIC && peripheral->supportsInterrupts()) {
+    if (!m_plic) {
+      QMessageBox::warning(nullptr, "Periférico no soportado",
+          peripheral->name() + " no puede generar IRQ sin PLIC.");
+      return nullptr;
+    }
+    // Assign a globalID to the peripheral
+    peripheral->setGlobalID(getNextGlobalId());
+    // Register peripheral at PLIC
+    m_plic->registerSource(peripheral->globalID(), peripheral);
+  }
+
   m_peripherals.insert(peripheral);
   assignBaseAddress(peripheral);
   refreshMemoryMap();
 
+  // If it's a PLIC, pass reference to trap_checker
+  if (type == IOType::PLIC) {
+    if (auto* tc = ProcessorHandler::getTrapChecker())
+      tc->setPLIC(m_plic);
+  }
+
   return peripheral;
 }
 
-void IOManager::removePeripheral(IOBase *peripheral, std::atomic<bool> &ok) {
-  auto periphit = m_peripherals.find(peripheral);
-  Q_ASSERT(periphit != m_peripherals.end());
-  unregisterPeripheralWithProcessor(peripheral);
-  m_peripherals.erase(periphit);
 
-  emit peripheralRemoved(peripheral);
-  refreshMemoryMap();
+
+
+void IOManager::removePeripheral(IOBase *peripheral, std::atomic<bool> &ok) {
+  // If we are deleting a PLIC, remove the reference passed to trap_checker
+  if (peripheral == m_plic) {
+    if (auto* tc = ProcessorHandler::getTrapChecker())
+      tc->setPLIC(nullptr);
+    m_plic = nullptr;
+    // Delete al peripheral refrences the PLIC posseses
+    disconnectPeripheralsFromPLIC();
+  }
+
+  auto it = m_peripherals.find(peripheral);
+  Q_ASSERT(it != m_peripherals.end());
+  unsigned gid = peripheral->globalID();
+
+  // Delete this peripheral reference from the PLIC
+  if (peripheral->supportsInterrupts() && m_plic) {
+    m_plic->unregisterSource(gid);
+  }
+
+  // 4) Elimina del manager
+  unregisterPeripheralWithProcessor(peripheral);
+  m_peripherals.erase(it);
+  m_usedGlobalIds.erase(gid);
 
   ok = true;
 }
 
+void IOManager::connectPeripheralsToPLIC() {
+  if (!m_plic) return;
+  for (auto* p : m_peripherals) {
+    if (p != m_plic && p->supportsInterrupts()) {
+      m_plic->registerSource(p->globalID(), p);
+    }
+  }
+}
+
+void IOManager::disconnectPeripheralsFromPLIC() {
+  if (!m_plic) {
+    // Si no hay PLIC activo, simplemente limpia los registros internos
+    return;
+  }
+  for (auto* p : m_peripherals) {
+    if (p->supportsInterrupts()) {
+      m_plic->unregisterSource(p->globalID());
+    }
+  }
+}
+
 void IOManager::refreshAllPeriphsToProcessor() {
+  disconnectPeripheralsFromPLIC(); 
+
+  // If a PLIC already exists, we deleted since the new processor might not suppport interrupts
+  if (m_plic) { 
+    std::atomic<bool> ok{false}; 
+    removePeripheral(m_plic, ok); 
+  } 
+
   for (const auto &periph : m_periphMMappings) {
     registerPeripheralWithProcessor(periph.first);
   }
@@ -230,6 +324,17 @@ void IOManager::updateSymbols() {
     m_symbolsHeaderFile->write(headerfile.join('\n').toUtf8());
     m_symbolsHeaderFile->close();
   }
+}
+
+unsigned IOManager::getNextGlobalId() { 
+  for (unsigned cand = 1; cand <= 1023; ++cand) { 
+    if (!m_usedGlobalIds.count(cand)) { 
+      m_usedGlobalIds.insert(cand);
+      return cand; 
+    } 
+  }
+  qFatal("Se han agotado los IDs globales (1..1023)."); 
+  return 0; // unreachable code 
 }
 
 } // namespace Ripes

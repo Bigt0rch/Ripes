@@ -31,6 +31,7 @@ public:
    * Hardware read/write functions
    */
   virtual VInt ioRead(AInt offset, unsigned size) override;
+  virtual VInt ioReadConst(AInt offset, unsigned size) override;
   virtual void ioWrite(AInt offset, VInt value, unsigned size) override;
 
 protected:

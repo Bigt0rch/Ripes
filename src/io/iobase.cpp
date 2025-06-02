@@ -22,7 +22,7 @@ QString cName(const QString &name) {
 }
 
 QString IOBase::name() const {
-  return baseName() + " " + QString::number(m_id);
+  return "#" + QString::number(globalID()) + " " +baseName() + " " + QString::number(m_id);
 }
 
 bool IOBase::setParameter(unsigned ID, const QVariant &value) {
