@@ -8,6 +8,7 @@
 #include "processors/RISC-V/rv5s_no_hz/rv5s_no_hz.h"
 #include "processors/RISC-V/rv6s_dual/rv6s_dual.h"
 #include "processors/RISC-V/rvss/rvss.h"
+#include "processors/RISC-V/rvss_trap/rvss_trap.h"
 
 namespace Ripes {
 
@@ -69,7 +70,7 @@ ProcessorRegistry::ProcessorRegistry() {
               ":/layouts/RISC-V/rvss_trap/rv_ss_trap_extended_layout.json",
               {{{0, 0}, QPointF{0.5, 0}}}}};
   defRegVals = {{RVISA::GPR, {{2, 0x7ffffff0}, {3, 0x10000000}}}};
-  addProcessor(ProcInfo<vsrtl::core::RVSS<uint32_t>>(
+  addProcessor(ProcInfo<vsrtl::core::RVSS_TRAP<uint32_t>>(
       ProcessorID::RV32_SS_TRAP, "Single-cycle processor traps",
       "A single cycle processor that supports traps", layouts, defRegVals));
 
