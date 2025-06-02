@@ -87,6 +87,12 @@ private slots:
     runTests(ProcessorID::RV32_SS, {"M", "C"},
              {RISCV32_TEST_DIR, RISCV32_C_TEST_DIR});
   }
+
+  void testRV32_SingleCycle_traps() {
+  runTests(ProcessorID::RV32_SS_TRAP, {"M", "C"},
+           {RISCV32_TEST_DIR, RISCV32_C_TEST_DIR});
+  }
+
   void testRV32_5StagePipeline() {
     runTests(ProcessorID::RV32_5S, {"M", "C"},
              {RISCV32_TEST_DIR, RISCV32_C_TEST_DIR});
