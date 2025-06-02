@@ -54,6 +54,11 @@ extern const QStringList GPRRegAliases;
 extern const QStringList GPRRegNames;
 extern const QStringList GPRRegDescs;
 
+// Control and status registers
+extern const QStringList CSRNames;
+extern const QVector<unsigned> CSRAddrs;
+extern const QStringList CSRDescs;
+
 constexpr unsigned INSTR_BITS = 32;
 
 template <typename InstrImpl>
@@ -101,6 +106,35 @@ struct RV_GPRInfo : public RegFileInfoInterface {
     }
     success = false;
     return 0;
+  }
+};
+
+/// Información sobre el banco de CSRs
+struct RV_CSRInfo : public RegFileInfoInterface {
+  std::string_view regFileName() const override { return CSR; }
+  std::string_view regFileDesc() const override { return CSR_DESC; }
+  unsigned int regCnt() const override { return CSRNames.size(); }
+  QString regName(unsigned i) const override {
+    return (i < static_cast<unsigned>(CSRNames.size())
+             ? CSRNames.at(i)
+             : QString());
+  }
+  QString regAlias(unsigned i) const override {
+    return regName(i);
+  }
+  QString regInfo(unsigned i) const override {
+    return (i < static_cast<unsigned>(CSRDescs.size())
+             ? CSRDescs.at(i)
+             : QString());
+  }
+  bool regIsReadOnly(unsigned) const override { return false; }
+  unsigned int regNumber(const QString &csr, bool &success) const override {
+    // Busca el índice de csr en CSRNames
+    int idx = CSRNames.indexOf(csr);
+    if (idx < 0) { success = false; return 0; }
+    success = true;
+    // Devuelve la dirección real (0x300…) que cabe en 12 bits
+    return CSRAddrs.at(idx);
   }
 };
 
@@ -164,6 +198,9 @@ public:
     }
 
     m_regInfos[GPR] = std::make_unique<RV_GPRInfo>();
+
+    // Registrar el nuevo banco CSR
+    m_regInfos[RVISA::CSR] = std::make_unique<RVISA::RV_CSRInfo>();
     if (supportsExtension("F")) {
       m_regInfos[FPR] = std::make_unique<RV_FPRInfo>();
     }
@@ -324,6 +361,12 @@ struct RegRs1
   constexpr static std::string_view getName() { return "rs1"; }
 };
 
+// Campo CSR: 12 bits en [31:20]
+template <unsigned tokenIndex>
+struct RegCSR
+    : public Reg<RegCSR<tokenIndex>, tokenIndex, BitRange<20, 31>, RVISA::RV_CSRInfo> {
+  constexpr static std::string_view getName() { return "csr"; }
+};
 /// The RISC-V Rs2 field contains a source register index.
 /// It is defined as a 5-bit field in bits 20-24 of the instruction
 template <unsigned tokenIndex>

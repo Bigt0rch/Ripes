@@ -48,6 +48,30 @@ const QStringList GPRRegDescs = QStringList() << "Hard-Wired zero"
                                            << "Temporary register\nSaver: Caller"
                                            << "Temporary register\nSaver: Caller"
                                            << "Temporary register\nSaver: Caller";
+
+const QStringList CSRNames = QStringList() << "mstatus"
+                                            << "mtvec"
+                                            << "mie"
+                                            << "mip"
+                                            << "mepc"
+                                            << "mcause"
+                                            << "mtval";
+
+const QVector<unsigned> CSRAddrs = QVector<unsigned>() << 0x300  // mstatus
+                                                        << 0x305  // mtvec
+                                                        << 0x304  // mie
+                                                        << 0x344  // mip
+                                                        << 0x341  // mepc
+                                                        << 0x342  // mcause
+                                                        << 0x343; // mtval
+
+const QStringList CSRDescs = QStringList() << "Machine Status Register"
+                                            << "Machine Trap-Vector Base Address"
+                                            << "Machine Interrupt Enable"
+                                            << "Machine Interrupt Pending"
+                                            << "Machine Exception Program Counter"
+                                            << "Machine Cause Register"
+                                            << "Machine Trap Value Register";
 // clang-format on
 
 } // namespace RVISA

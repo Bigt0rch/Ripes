@@ -245,7 +245,20 @@ struct Ld : public Instr<Ld, Funct3::LD> {
 
 namespace TypeSystem {
 
-enum class Funct12 { ECALL = 0x000, EBREAK = 0b001 };
+/// A RISC-V unsigned immediate field with a width of 5 bits.
+/// Used in IShift32-Type instructions.
+///
+/// It is defined as:
+///  - Imm[4:0] = Inst[19:15]
+constexpr static unsigned CSR_I_VALID_INDEX = 2;
+template <unsigned tokenIndex>
+struct ImmCSR5
+    : public Imm<tokenIndex, 5, Repr::Unsigned, ImmPart<0, 15, 19>> {
+  static_assert(tokenIndex == CSR_I_VALID_INDEX,
+                "ImmCSR5 must be the third token (index 2)");
+};
+
+enum class Funct12 { ECALL = 0x000, EBREAK = 0b001, MRET = 0b010 };
 
 /// All RISC-V Funct12 opcode parts are defined as a 12-bit field in bits 20-31
 /// of the instruction
@@ -266,6 +279,58 @@ struct Instr : public RV_Instruction<InstrImpl> {
 struct Ecall : public Instr<Ecall, Funct12::ECALL> {
   constexpr static std::string_view NAME = "ecall";
 };
+
+struct Mret : public Instr<Mret, Funct12::MRET> {
+  constexpr static std::string_view NAME = "mret";
+};
+
+// ——— Codigos funct3 para las nuevas instrucciones CSR ———
+enum class Funct3CSR : unsigned {
+  CSRRW  = 0b001,
+  CSRRWI = 0b010,
+  CSRRC  = 0b011,
+  CSRRCI = 0b100,
+  CSRRS  = 0b101,
+  CSRRSI = 0b110
+};
+
+//—– Plantilla base para las variantes “registro” (rs1) —–
+template <typename InstrImpl, Funct3CSR funct3>
+struct InstrCSR : public RV_Instruction<InstrImpl> {
+  struct Opcode : OpcodeSet<
+      OpPartOpcode<OpcodeID::SYSTEM>,    // 0b1110011
+      OpPartFunct3<static_cast<unsigned>(funct3)>
+  > {};
+  // Aquí pasamos los nombres de las plantillas, no sus especializaciones:
+  struct Fields : public FieldSet<
+      RegRd,     // tokenIndex = 0 → rd
+      RegCSR,    // tokenIndex = 1 → csr[11:0]
+      RegRs1     // tokenIndex = 2 → rs1
+  > {};
+};
+
+//—– Plantilla base para las variantes “inmediato” (zimm) —–
+template <typename InstrImpl, Funct3CSR funct3>
+struct InstrCSRImm : public RV_Instruction<InstrImpl> {
+  struct Opcode : OpcodeSet<
+      OpPartOpcode<OpcodeID::SYSTEM>,
+      OpPartFunct3<static_cast<unsigned>(funct3)>
+  > {};
+  struct Fields : public FieldSet<
+      RegRd,                   // tokenIndex = 0 → rd
+      RegCSR,                  // tokenIndex = 1 → csr[11:0]
+      ImmCSR5                  // ahora sí bits 15–19
+  > {};
+};
+
+//—– Las seis instrucciones Zicsr —–
+struct CsrRW  : InstrCSR <CsrRW,  Funct3CSR::CSRRW>  { constexpr static std::string_view NAME = "csrrw";  };
+struct CsrRS  : InstrCSR <CsrRS,  Funct3CSR::CSRRS>  { constexpr static std::string_view NAME = "csrrs";  };
+struct CsrRC  : InstrCSR <CsrRC,  Funct3CSR::CSRRC>  { constexpr static std::string_view NAME = "csrrc";  };
+struct CsrRWI : InstrCSRImm<CsrRWI, Funct3CSR::CSRRWI> { constexpr static std::string_view NAME = "csrrwi"; };
+struct CsrRSI : InstrCSRImm<CsrRSI, Funct3CSR::CSRRSI> { constexpr static std::string_view NAME = "csrrsi"; };
+struct CsrRCI : InstrCSRImm<CsrRCI, Funct3CSR::CSRRCI> { constexpr static std::string_view NAME = "csrrci"; };
+
 
 } // namespace TypeSystem
 
