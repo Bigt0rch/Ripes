@@ -57,7 +57,7 @@ _start:
 # 4 Instalar vector de interrupción en mtvec y main loop
 # ---------------------------------------------------------
     # Carga la dirección del handler y la escribe en mtvec
-    la    t0, irq_handler    # (línea ~64 en tu anterior fuente)
+    la    t0, irq_handler
     csrrw x0, mtvec, t0
 
 main_loop:
